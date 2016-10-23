@@ -1,0 +1,113 @@
+---
+title: "Prediction Assignment Writeup"
+subtitle: "Practical Machine Learning"
+author: "Bernard Sutopo"
+date: "23 October 2016"
+output: 
+    html_document:
+        theme: cosmo
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(caret)
+library(randomForest)
+```
+
+## Background
+
+In this project, we will be using data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants, who were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+More information is available from the [website here](http://groupware.les.inf.puc-rio.br/har) (see the section on the Weight Lifting Exercise Dataset).
+
+From this data, our goal is to predict the manner in which they did the exercise ("classe" variable in the training set).
+
+
+## Loading Data
+
+The training and testing data sets are provided through the links below:
+
+- https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+- https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+First, we will load the data into R using.
+
+```{r load}
+URL_train <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+URL_test <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+file_train <-"pml-training.csv"
+file_test <-"pml-testing.csv"
+
+# check if the file exists and execute download to ensure reproducibility
+if (!file.exists(file_train)){
+    download.file(URL_train, destfile = file_train)
+}
+if (!file.exists(file_test)){
+    download.file(URL_test, destfile = file_test)
+}
+
+# read the downloaded csv
+training <- read.csv(file_train)
+testing  <- read.csv(file_test)
+```
+
+
+## Pre-processing Data
+
+By observing the output `summary(training)`, we find missing values in the form of "NA's", "" and "#DIV/0!".
+
+As such, we execute `read.csv()` once more with `na.strings=` argument in order to standardise the missing values.
+
+```{r clean}
+# read the downloaded csv
+training <- read.csv(file_train, na.strings = c("NA", "", "#DIV/0!"))
+testing  <- read.csv(file_test, na.strings = c("NA", "", "#DIV/0!"))
+```
+
+Also from `summary(training)`, we see that many of the columns contain mostly missing values. Since columns with missing values may not contribute much to the prediction, we subset the data to create a feature set which consists of variables with complete values. We also exclude username, timestamps and windows from the feature set.
+
+```{r subset}
+complete <- colnames(training[colSums(is.na(training)) == 0])[-(1:7)]
+featureSet <- training[complete]
+```
+
+This leaves us with **53** out of the original 158 potential predictors. Now, we build the model using the feature set.
+
+## Partitioning Data
+
+First, we partition the data into 75% training set and 25% test set in order to properly assess the performance of the model.
+
+```{r partition}
+inTrain <- createDataPartition(y = featureSet$classe, p = 0.75, list = F)
+trainSet <- featureSet[inTrain,]
+testSet <- featureSet[-inTrain,]
+```
+
+## Training Model
+
+For the prediction model, we will use **random forests** algorithm with 5-fold cross-validation.
+
+```{r model}
+control <- trainControl(method = "cv", number = 5, allowParallel = T, verbose = F)
+modelRF <- train(classe ~ ., data = trainSet, method = "rf", trControl = control, verbose = F)
+```
+
+## Predicting Results
+
+After the model fit has been generated, we can use it to predict results from the testing set.
+
+The `ConfusionMatrix` function allows us to verify the accuracy of model fit and expected out-of-sample error.
+
+```{r predict}
+predRF <- predict(modelRF, newdata = testSet)
+confusionMatrix(predRF, testSet$classe)
+```
+
+## Applying Final Algorithm
+
+Finally, we apply the model to the 20 cases provided in order to obtain the required predictions.
+
+```{r test}
+answers <- predict(modelRF, newdata = testing[complete[-length(complete)]])
+answers
+```
